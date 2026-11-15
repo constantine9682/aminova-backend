@@ -1,0 +1,1 @@
+fetch("https://aminova-backend-production.up.railway.app/api/sync/outbox", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "test-123", data: "hello" }) }).then(res => res.text()).then(data => console.log("Result:", data)).catch(err => console.error("Error:", err));
