@@ -7,17 +7,20 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// DEBUG LINE ADDED HERE
+console.log("DEBUG - DB_SERVER:", process.env.DB_SERVER, "DB_USER:", process.env.DB_USER, "DB_PASSWORD:", process.env.DB_PASSWORD);
+
 const config = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     server: process.env.DB_SERVER,
-    database: "master", // We connect to the default master database
+    database: "master", 
     options: {
         encrypt: true,
         trustServerCertificate: true,
         enableArithAbort: true
     },
-    connectionTimeout: 30000, // Give it 30 seconds to connect
+    connectionTimeout: 30000, 
     requestTimeout: 30000
 };
 
@@ -31,13 +34,11 @@ app.post("/api/sync/outbox", async (req, res) => {
         request.input("id", sql.NVarChar, req.body.id);
         request.input("payload", sql.NVarChar, JSON.stringify(req.body));
 
-        // Create table if it doesn't exist
         await request.query(`
             IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='TestSync' and xtype='U') 
             CREATE TABLE TestSync (id NVARCHAR(50), payload NVARCHAR(MAX))
         `);
         
-        // Insert the data
         await request.query("INSERT INTO TestSync (id, payload) VALUES (@id, @payload)");
         
         res.json({ success: true });
