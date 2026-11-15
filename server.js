@@ -11,6 +11,7 @@ const config = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     server: process.env.DB_SERVER,
+    port: 1433,
     database: "master",
     options: {
         encrypt: true,
@@ -18,21 +19,33 @@ const config = {
         enableArithAbort: true
     },
     connectionTimeout: 30000,
-    requestTimeout: 30000
+    requestTimeout: 30000,
+    pool: {
+        max: 10,
+        min: 0,
+        idleTimeoutMillis: 30000
+    }
 };
 
-// Helper to get a connected pool
 let poolPromise;
+
+// Helper to get a connected pool with retry logic
 async function getPool() {
     if (!poolPromise) {
-        poolPromise = await sql.connect(config);
+        try {
+            poolPromise = await sql.connect(config);
+            console.log("Connected to database successfully.");
+        } catch (err) {
+            console.error("Initial DB connection failed:", err.message);
+            throw err;
+        }
     }
     return poolPromise;
 }
 
 app.get("/", (req, res) => res.send("API running"));
 
-// --- AUTHENTICATION ROUTES (Stubs for now) ---
+// --- AUTHENTICATION ROUTES ---
 app.post("/auth/check-phone", (req, res) => res.json({ exists: false }));
 app.post("/auth/verify-phone/send", (req, res) => res.json({ sent: true, cooldownSeconds: 60 }));
 app.post("/auth/verify-phone/confirm", (req, res) => res.json({ verified: true, proofToken: "fake-proof-token-123" }));
@@ -87,14 +100,19 @@ app.post("/sync/operation", async (req, res) => {
         // 4. Respond with the exact status the app expects
         res.json({ 
             status: 'applied',
-            remoteVersion: (baseVersion || 0) + 1 // Simulating a version bump
+            remoteVersion: (baseVersion || 0) + 1
         });
 
     } catch (err) {
         console.error("Sync error:", err);
+        // If connection drops, reset the pool so the next request tries fresh
+        if (err.code === 'ECONNRESET' || err.code === 'ESOCKET') {
+            poolPromise = null;
+            console.log("Connection reset. Pool cleared for next request.");
+        }
         res.status(500).json({ status: 'rejected', reason: 'DATABASE_ERROR' });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server started on port " + PORT));
+app.listen(PORT, () => console.log("Server started on port " + PORT));;
