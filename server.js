@@ -11,7 +11,7 @@ const config = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     server: process.env.DB_SERVER,
-    port: 1433,
+    port: parseInt(process.env.DB_PORT) || 1433,
     database: "master",
     options: {
         encrypt: true,
@@ -29,7 +29,6 @@ const config = {
 
 let poolPromise;
 
-// Helper to get a connected pool with retry logic
 async function getPool() {
     if (!poolPromise) {
         try {
@@ -62,7 +61,6 @@ app.post("/sync/operation", async (req, res) => {
     try {
         const pool = await getPool();
         
-        // 1. Create a generic sync table to log operations if it doesn't exist
         await pool.request().query(`
             IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SyncOperations' and xtype='U') 
             CREATE TABLE SyncOperations (
@@ -75,7 +73,6 @@ app.post("/sync/operation", async (req, res) => {
             )
         `);
 
-        // 2. Check for duplicate operation (Idempotency)
         const checkReq = pool.request();
         checkReq.input("id", sql.NVarChar, id);
         const checkResult = await checkReq.query("SELECT OperationId FROM SyncOperations WHERE OperationId = @id");
@@ -84,7 +81,6 @@ app.post("/sync/operation", async (req, res) => {
             return res.json({ status: 'duplicate_operation' });
         }
 
-        // 3. Insert the operation into the log
         const reqObj = pool.request();
         reqObj.input("id", sql.NVarChar, id);
         reqObj.input("recordId", sql.NVarChar, recordId || "unknown");
@@ -97,7 +93,6 @@ app.post("/sync/operation", async (req, res) => {
             VALUES (@id, @recordId, @table, @op, @payload)
         `);
 
-        // 4. Respond with the exact status the app expects
         res.json({ 
             status: 'applied',
             remoteVersion: (baseVersion || 0) + 1
@@ -105,7 +100,6 @@ app.post("/sync/operation", async (req, res) => {
 
     } catch (err) {
         console.error("Sync error:", err);
-        // If connection drops, reset the pool so the next request tries fresh
         if (err.code === 'ECONNRESET' || err.code === 'ESOCKET') {
             poolPromise = null;
             console.log("Connection reset. Pool cleared for next request.");
@@ -115,4 +109,4 @@ app.post("/sync/operation", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server started on port " + PORT));;
+app.listen(PORT, () => console.log("Server started on port " + PORT));
